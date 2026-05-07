@@ -1,14 +1,36 @@
-{
-  "name": "crash-game",
-  "version": "1.0.0",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.6.2",
-    "path": "^0.12.7"
-  }
-}
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const path = require('path');
 
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
+app.use(express.static(__dirname));
+
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index-3.html')));
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
+
+let multiplier = 1.0;
+let isCrashed = false;
+let crashPoint = 2.0;
+
+setInterval(() => {
+  if (!isCrashed) {
+    multiplier += 0.03;
+    io.emit('tick', { multiplier: multiplier.toFixed(2) });
+    if (multiplier >= crashPoint) {
+      isCrashed = true;
+      io.emit('crashed', { multiplier: multiplier.toFixed(2) });
+      setTimeout(() => {
+        multiplier = 1.0;
+        isCrashed = false;
+        crashPoint = (Math.random() * 4 + 1.1).toFixed(2);
+      }, 4000);
+    }
+  }
+}, 100);
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log('Server is running!'));
