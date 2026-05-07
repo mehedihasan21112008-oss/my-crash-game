@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRASH ZONE — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:     #05070f;
+  --panel:  #090d1c;
+  --border: rgba(255,180,0,0.12);
+  --gold:   #ffd700;
+  --cyan:   #00f0ff;
+  --green:  #00ff88;
+  --red:    #ff1e42;
+  --pink:   #ff2d78;
+  --dim:    #3a5070;
+  --text:   #c0d4f0;
+}
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; }
+input, button, select { font-family: inherit; }
+
+.bg-grid {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image: linear-gradient(rgba(255,180,0,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,180,0,0.02) 1px, transparent 1px);
+  background-size: 30px 30px;
+}
+
+/* ─── AUTH ──────────────────────────────────────────────────────────────── */
+#adminAuth {
+  position: fixed; inset: 0; z-index: 100; display: flex;
+  align-items: center; justify-content: center;
+  background: rgba(5,7,15,0.97);
+}
+.auth-box {
+  background: linear-gradient(135deg, #090d1c, #05070f);
+  border: 1px solid var(--border); border-radius: 14px;
+  padding: 36px 28px; width: 360px;
+  position: relative; overflow: hidden;
+}
+.auth-box::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+.auth-logo {
+  text-align:center; margin-bottom:28px;
+}
+.auth-logo h1 {
+  font-family: 'Orbitron', monospace; font-size:1.6rem; font-weight:900;
+  color: var(--gold); letter-spacing:4px;
+  text-shadow: 0 0 24px rgba(255,215,0,0.4);
+}
+.auth-logo p { color: var(--dim); font-size: 0.72rem; letter-spacing: 3px; margin-top:4px; }
+.fl { margin-bottom:14px; }
+.fl label { display:block; font-size:0.7rem; color:var(--dim); letter-spacing:2px; margin-bottom:5px; }
+.fi {
+  width:100%; background:rgba(0,0,0,0.5); border:1px solid var(--border);
+  border-radius:8px; color:var(--text); padding:11px 14px;
+  font-family:'Share Tech Mono',monospace; font-size:0.95rem; outline:none;
+}
+.fi:focus { border-color:var(--gold); }
+.btn-gold {
+  width:100%; padding:13px; border:none; border-radius:8px; cursor:pointer;
+  font-family:'Orbitron',monospace; font-size:0.85rem; font-weight:700;
+  letter-spacing:2px; background:linear-gradient(135deg,#cc9900,#ffd700);
+  color:#05070f; box-shadow:0 4px 20px rgba(255,215,0,0.25); transition:all 0.2s;
+}
+.btn-gold:hover { transform:translateY(-1px); box-shadow:0 6px 28px rgba(255,215,0,0.4); }
+.err { color:var(--red); font-size:0.78rem; text-align:center; margin-top:8px; min-height:18px; }
+
+/* ─── LAYOUT ────────────────────────────────────────────────────────────── */
+#adminApp { display:none; flex-direction:column; min-height:100vh; position:relative; z-index:1; }
+
+.top-bar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 20px; background:rgba(9,13,28,0.97);
+  border-bottom:1px solid var(--border); position:sticky; top:0; z-index:50;
+}
+.admin-logo { font-family:'Orbitron',monospace; font-size:1rem; font-weight:900; color:var(--gold); letter-spacing:4px; text-shadow:0 0 18px rgba(255,215,0,0.3); }
+.top-right { display:flex; gap:8px; align-items:center; }
+.badge { padding:4px 12px; border-radius:20px; font-size:0.72rem; letter-spacing:2px; }
+.badge.live { background:rgba(0,255,136,0.1); color:var(--green); border:1px solid rgba(0,255,136,0.2); }
+.btn-sm {
+  padding:6px 14px; border-radius:6px; border:1px solid var(--border);
+  background:transparent; color:var(--dim); font-size:0.75rem; letter-spacing:1px;
+  cursor:pointer; transition:all 0.15s;
+}
+.btn-sm:hover { border-color:var(--gold); color:var(--gold); }
+
+.content { display:flex; gap:14px; padding:14px; flex-wrap:wrap; }
+
+/* ─── CARDS ─────────────────────────────────────────────────────────────── */
+.card {
+  background:var(--panel); border:1px solid var(--border);
+  border-radius:12px; padding:18px; flex:1; min-width:280px;
+}
+.card.wide { flex: 2; min-width: 400px; }
+.card-title {
+  font-family:'Orbitron',monospace; font-size:0.72rem; color:var(--gold);
+  letter-spacing:3px; margin-bottom:14px; padding-bottom:10px;
+  border-bottom:1px solid var(--border);
+}
+
+/* stat boxes */
+.stat-row { display:flex; gap:10px; margin-bottom:14px; }
+.stat-box {
+  flex:1; background:rgba(0,0,0,0.3); border:1px solid var(--border);
+  border-radius:8px; padding:12px; text-align:center;
+}
+.stat-val { font-family:'Orbitron',monospace; font-size:1.5rem; font-weight:900; color:var(--cyan); }
+.stat-lbl { font-size:0.65rem; color:var(--dim); letter-spacing:2px; margin-top:2px; }
+
+/* crash control */
+.crash-status {
+  background:rgba(255,215,0,0.06); border:1px solid rgba(255,215,0,0.15);
+  border-radius:8px; padding:12px; font-size:0.82rem; color:var(--gold);
+  margin-bottom:12px;
+}
+.input-row { display:flex; gap:8px; margin-bottom:10px; }
+.input-row input {
+  flex:1; background:rgba(0,0,0,0.4); border:1px solid var(--border);
+  border-radius:8px; color:var(--text); padding:10px 14px;
+  font-family:'Share Tech Mono',monospace; font-size:1rem; outline:none;
+}
+.input-row input:focus { border-color:var(--gold); }
+.btn-set {
+  padding:10px 18px; border:none; border-radius:8px; cursor:pointer;
+  font-family:'Orbitron',monospace; font-size:0.75rem; font-weight:700;
+  letter-spacing:1px; background:linear-gradient(135deg,#cc9900,#ffd700);
+  color:#05070f; transition:all 0.15s;
+}
+.btn-set:hover { opacity:0.85; }
+.btn-clear {
+  width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;
+  background:transparent; color:var(--dim); font-size:0.78rem; letter-spacing:1px;
+  cursor:pointer; transition:all 0.2s;
+}
+.btn-clear:hover { border-color:var(--red); color:var(--red); }
+
+/* multiplier live */
+.live-mult {
+  font-family:'Orbitron',monospace; font-size:2.5rem; font-weight:900;
+  color:var(--cyan); text-align:center; padding:10px 0;
+  text-shadow:0 0 24px rgba(0,240,255,0.4);
+}
+.phase-badge {
+  text-align:center; font-size:0.72rem; letter-spacing:3px;
+  padding:5px; border-radius:6px; margin-bottom:8px;
+}
+.phase-badge.countdown { background:rgba(0,240,255,0.08); color:var(--cyan); }
+.phase-badge.running   { background:rgba(0,255,136,0.08); color:var(--green); }
+.phase-badge.crashed   { background:rgba(255,30,66,0.08);  color:var(--red); }
+
+/* tables */
+.data-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+.data-table th { color:var(--dim); letter-spacing:2px; font-size:0.65rem; padding:6px 8px; border-bottom:1px solid var(--border); text-align:left; }
+.data-table td { padding:8px 8px; border-bottom:1px solid rgba(255,255,255,0.03); color:var(--text); }
+.data-table tr:hover td { background:rgba(255,255,255,0.02); }
+
+.pill { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.68rem; font-weight:600; }
+.pill.pending  { background:rgba(255,215,0,0.12); color:var(--gold); }
+.pill.approved { background:rgba(0,255,136,0.12); color:var(--green); }
+.pill.rejected { background:rgba(255,30,66,0.12);  color:var(--red); }
+
+.btn-approve {
+  padding:4px 10px; border:none; border-radius:4px; cursor:pointer;
+  background:rgba(0,255,136,0.15); color:var(--green);
+  font-size:0.7rem; margin-right:4px; transition:background 0.15s;
+}
+.btn-approve:hover { background:rgba(0,255,136,0.25); }
+.btn-reject {
+  padding:4px 10px; border:none; border-radius:4px; cursor:pointer;
+  background:rgba(255,30,66,0.15); color:var(--red); font-size:0.7rem;
+  transition:background 0.15s;
+}
+.btn-reject:hover { background:rgba(255,30,66,0.25); }
+
+.tab-btns { display:flex; gap:6px; margin-bottom:14px; }
+.tab-btn {
+  padding:6px 14px; border-radius:6px; border:1px solid var(--border);
+  background:transparent; color:var(--dim); font-size:0.75rem; letter-spacing:1px;
+  cursor:pointer; transition:all 0.15s;
+}
+.tab-btn.active { border-color:var(--gold); color:var(--gold); background:rgba(255,215,0,0.06); }
+
+.scroll-box { max-height:300px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+
+/* balance adj */
+.bal-row { display:flex; gap:8px; align-items:center; }
+.bal-row input { flex:1; background:rgba(0,0,0,0.4); border:1px solid var(--border); border-radius:6px; color:var(--text); padding:8px 12px; font-family:'Share Tech Mono',monospace; font-size:0.9rem; outline:none; }
+.bal-row input:focus { border-color:var(--cyan); }
+
+/* toast */
+#toast {
+  position:fixed; top:16px; right:16px; z-index:200;
+  background:var(--panel); border:1px solid var(--gold); border-radius:8px;
+  padding:10px 18px; font-size:0.82rem; color:var(--gold);
+  opacity:0; pointer-events:none; transition:all 0.3s; transform:translateY(-10px);
+}
+#toast.show { opacity:1; transform:translateY(0); }
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div id="toast"></div>
+
+<!-- ─── ADMIN LOGIN ──────────────────────────────────────────────────────── -->
+<div id="adminAuth">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <h1>ADMIN</h1>
+      <p>CRASH ZONE · CONTROL CENTER</p>
+    </div>
+    <div class="fl">
+      <label>USERNAME</label>
+      <input class="fi" id="aUser" type="text" placeholder="admin username" />
+    </div>
+    <div class="fl">
+      <label>PASSWORD</label>
+      <input class="fi" id="aPass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doAdminLogin()" />
+    </div>
+    <button class="btn-gold" onclick="doAdminLogin()">ACCESS DASHBOARD</button>
+    <div class="err" id="aErr"></div>
+  </div>
+</div>
+
+<!-- ─── ADMIN APP ────────────────────────────────────────────────────────── -->
+<div id="adminApp">
+  <div class="top-bar">
+    <div class="admin-logo">⚙ ADMIN PANEL</div>
+    <div class="top-right">
+      <div class="badge live" id="onlineBadge">🟢 0 Online</div>
+      <button class="btn-sm" onclick="loadAll()">↺ REFRESH</button>
+      <button class="btn-sm" onclick="adminLogout()">LOGOUT</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ── LIVE MONITOR ─────────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">LIVE GAME</div>
+      <div class="stat-row">
+        <div class="stat-box"><div class="stat-val" id="statPlayers">0</div><div class="stat-lbl">PLAYERS</div></div>
+        <div class="stat-box"><div class="stat-val" id="statRound">—</div><div class="stat-lbl">ROUND</div></div>
+        <div class="stat-box"><div class="stat-val" id="statBets">0</div><div class="stat-lbl">BETS</div></div>
+      </div>
+      <div class="phase-badge countdown" id="phaseBadge">COUNTDOWN</div>
+      <div class="live-mult" id="liveMult">—</div>
+    </div>
+
+    <!-- ── CRASH CONTROL ─────────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">CRASH CONTROL</div>
+      <div class="crash-status" id="crashStatus">Next crash: AUTO (random)</div>
+      <div class="input-row">
+        <input type="number" id="crashVal" placeholder="e.g. 2.50" step="0.01" min="1.00" />
+        <button class="btn-set" onclick="setCrash()">SET</button>
+      </div>
+      <button class="btn-clear" onclick="clearCrash()">✕ CLEAR — Use Random</button>
+    </div>
+
+    <!-- ── DEPOSITS ──────────────────────────────────────────── -->
+    <div class="card wide">
+      <div class="card-title">PAYMENT APPROVALS</div>
+      <div class="tab-btns">
+        <button class="tab-btn active" id="tabPending"  onclick="filterDeposits('pending')">PENDING</button>
+        <button class="tab-btn" id="tabApproved" onclick="filterDeposits('approved')">APPROVED</button>
+        <button class="tab-btn" id="tabRejected" onclick="filterDeposits('rejected')">REJECTED</button>
+      </div>
+      <div class="scroll-box">
+        <table class="data-table">
+          <thead><tr><th>USER</th><th>METHOD</th><th>TX ID</th><th>AMOUNT</th><th>TIME</th><th>STATUS</th><th>ACTION</th></tr></thead>
+          <tbody id="depositsBody"><tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── PLAYERS ───────────────────────────────────────────── -->
+    <div class="card wide">
+      <div class="card-title">ACTIVE PLAYERS</div>
+      <div class="scroll-box">
+        <table class="data-table">
+          <thead><tr><th>USERNAME</th><th>BET</th><th>STATUS</th></tr></thead>
+          <tbody id="playersBody"><tr><td colspan="3" style="text-align:center;color:var(--dim);padding:20px">No players online</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── ALL USERS ─────────────────────────────────────────── -->
+    <div class="card wide">
+      <div class="card-title">USER MANAGEMENT</div>
+      <div class="scroll-box">
+        <table class="data-table" id="usersTable">
+          <thead><tr><th>USERNAME</th><th>BALANCE</th><th>JOINED</th><th>ADJUST BALANCE</th></tr></thead>
+          <tbody id="usersBody"><tr><td colspan="4" style="text-align:center;color:var(--dim);padding:20px">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── ROUND HISTORY ─────────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">ROUND HISTORY</div>
+      <div class="scroll-box">
+        <table class="data-table">
+          <thead><tr><th>ROUND</th><th>CRASH AT</th><th>MANUAL</th></tr></thead>
+          <tbody id="roundsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let adminToken = '';
+let allDeposits = [];
+let currentFilter = 'pending';
+let socket;
+
+// ─── LOGIN ────────────────────────────────────────────────────────────────
+async function doAdminLogin() {
+  const u = document.getElementById('aUser').value.trim();
+  const p = document.getElementById('aPass').value;
+  document.getElementById('aErr').textContent = '';
+  try {
+    const r = await fetch('/api/admin/login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username:u, password:p })
+    });
+    const d = await r.json();
+    if (!r.ok) { document.getElementById('aErr').textContent = d.error; return; }
+    adminToken = d.token;
+    sessionStorage.setItem('admin_token', adminToken);
+    enterAdmin();
+  } catch { document.getElementById('aErr').textContent = 'Connection error'; }
+}
+
+function adminLogout() {
+  sessionStorage.removeItem('admin_token');
+  location.reload();
+}
+
+function enterAdmin() {
+  document.getElementById('adminAuth').style.display = 'none';
+  document.getElementById('adminApp').style.display  = 'flex';
+  document.getElementById('adminApp').style.flexDirection = 'column';
+  connectAdminSocket();
+  loadAll();
+  setInterval(loadPlayers, 5000);
+}
+
+// ─── SOCKET ───────────────────────────────────────────────────────────────
+function connectAdminSocket() {
+  socket = io();
+  socket.on('tick', d => {
+    document.getElementById('liveMult').textContent = d.multiplier.toFixed(2) + '×';
+  });
+  socket.on('phase', d => {
+    const b = document.getElementById('phaseBadge');
+    b.textContent = d.phase.toUpperCase();
+    b.className = 'phase-badge ' + d.phase;
+    if (d.phase === 'countdown') document.getElementById('liveMult').textContent = '—';
+    if (d.roundId) document.getElementById('statRound').textContent = d.roundId;
+  });
+  socket.on('crashed', d => {
+    document.getElementById('liveMult').textContent = d.multiplier.toFixed(2) + '× 💥';
+    document.getElementById('statBets').textContent = '0';
+  });
+  socket.on('playerCount', n => {
+    document.getElementById('statPlayers').textContent = n;
+    document.getElementById('onlineBadge').textContent = `🟢 ${n} Online`;
+  });
+  socket.on('activeBets', n => {
+    document.getElementById('statBets').textContent = n;
+  });
+  socket.on('admin:manualSet', d => {
+    document.getElementById('crashStatus').textContent = `⚠ Next crash: ${d.crashAt}× (MANUAL)`;
+  });
+  socket.on('admin:manualCleared', () => {
+    document.getElementById('crashStatus').textContent = 'Next crash: AUTO (random)';
+  });
+  socket.on('state', d => {
+    if (d.roundId) document.getElementById('statRound').textContent = d.roundId;
+    if (d.multiplier) document.getElementById('liveMult').textContent = d.multiplier.toFixed(2) + '×';
+    const b = document.getElementById('phaseBadge');
+    b.textContent = d.phase.toUpperCase();
+    b.className = 'phase-badge ' + d.phase;
+  });
+}
+
+// ─── CRASH CONTROL ───────────────────────────────────────────────────────
+async function setCrash() {
+  const v = parseFloat(document.getElementById('crashVal').value);
+  if (isNaN(v) || v < 1.00) { showToast('Min 1.00'); return; }
+  const r = await api('POST', '/api/admin/set-crash', { crashAt: v });
+  if (r) { showToast(r.message); document.getElementById('crashStatus').textContent = `⚠ Next crash: ${v}× (MANUAL)`; }
+}
+
+async function clearCrash() {
+  await api('POST', '/api/admin/clear-crash');
+  document.getElementById('crashStatus').textContent = 'Next crash: AUTO (random)';
+  showToast('Crash point cleared');
+}
+
+// ─── DEPOSITS ────────────────────────────────────────────────────────────
+async function loadDeposits() {
+  const d = await api('GET', '/api/admin/deposits');
+  if (!d) return;
+  allDeposits = d;
+  renderDeposits();
+}
+
+function filterDeposits(f) {
+  currentFilter = f;
+  ['pending','approved','rejected'].forEach(s => {
+    document.getElementById('tab' + s.charAt(0).toUpperCase() + s.slice(1))
+      .className = 'tab-btn' + (s === f ? ' active' : '');
+  });
+  renderDeposits();
+}
+
+function renderDeposits() {
+  const filtered = allDeposits.filter(d => d.status === currentFilter);
+  const tbody = document.getElementById('depositsBody');
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px">No ${currentFilter} deposits</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtered.map(d => `
+    <tr>
+      <td>${d.username}</td>
+      <td>${d.method?.toUpperCase()}</td>
+      <td style="font-family:'Share Tech Mono',monospace;font-size:0.72rem">${d.txId}</td>
+      <td style="color:#ffd700;font-family:'Share Tech Mono',monospace">$${d.amount}</td>
+      <td style="color:var(--dim);font-size:0.7rem">${new Date(d.createdAt).toLocaleString()}</td>
+      <td><span class="pill ${d.status}">${d.status.toUpperCase()}</span></td>
+      <td>
+        ${d.status === 'pending' ? `
+          <button class="btn-approve" onclick="approveDeposit('${d._id}')">✓ APPROVE</button>
+          <button class="btn-reject"  onclick="rejectDeposit('${d._id}')">✕ REJECT</button>` : '—'}
+      </td>
+    </tr>`).join('');
+}
+
+async function approveDeposit(id) {
+  const r = await api('POST', `/api/admin/deposit/approve/${id}`);
+  if (r?.ok) { showToast('Deposit approved!'); loadDeposits(); }
+}
+async function rejectDeposit(id) {
+  const reason = prompt('Rejection reason (optional):') || '';
+  const r = await api('POST', `/api/admin/deposit/reject/${id}`, { reason });
+  if (r?.ok) { showToast('Deposit rejected'); loadDeposits(); }
+}
+
+// ─── PLAYERS ─────────────────────────────────────────────────────────────
+async function loadPlayers() {
+  const d = await api('GET', '/api/admin/players');
+  if (!d) return;
+  document.getElementById('statPlayers').textContent = d.onlineCount;
+  const tbody = document.getElementById('playersBody');
+  if (!d.players.length) {
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--dim);padding:20px">No players online</td></tr>';
+    return;
+  }
+  tbody.innerHTML = d.players.map(p => `
+    <tr>
+      <td>${p.username}</td>
+      <td>${p.activeBet ? `$${p.activeBet.amount.toFixed(2)}` : '—'}</td>
+      <td>${p.activeBet ? (p.activeBet.cashedOut ? `<span style="color:var(--green)">CASHED ${p.activeBet.cashoutAt}×</span>` : '<span style="color:var(--gold)">ACTIVE</span>') : '<span style="color:var(--dim)">WATCHING</span>'}</td>
+    </tr>`).join('');
+}
+
+// ─── USERS ───────────────────────────────────────────────────────────────
+async function loadUsers() {
+  const d = await api('GET', '/api/admin/users');
+  if (!d) return;
+  document.getElementById('usersBody').innerHTML = d.map(u => `
+    <tr>
+      <td>${u.username}</td>
+      <td style="color:var(--gold);font-family:'Share Tech Mono',monospace">$${parseFloat(u.balance).toFixed(2)}</td>
+      <td style="color:var(--dim);font-size:0.7rem">${new Date(u.createdAt).toLocaleDateString()}</td>
+      <td>
+        <div class="bal-row">
+          <input type="number" id="bal_${u._id}" placeholder="±amount" step="1" />
+          <button class="btn-set" style="padding:6px 12px;font-size:0.7rem" onclick="adjustBal('${u.username}','${u._id}')">SET</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+async function adjustBal(username, id) {
+  const amt = parseFloat(document.getElementById('bal_' + id).value);
+  if (isNaN(amt)) { showToast('Enter a valid amount'); return; }
+  const r = await api('POST', '/api/admin/balance', { username, amount: amt });
+  if (r?.ok) { showToast(`Balance updated. New: $${r.newBalance.toFixed(2)}`); loadUsers(); }
+}
+
+// ─── ROUNDS ──────────────────────────────────────────────────────────────
+async function loadRounds() {
+  const d = await api('GET', '/api/admin/rounds');
+  if (!d) return;
+  document.getElementById('roundsBody').innerHTML = d.map(r => `
+    <tr>
+      <td>#${r.roundId}</td>
+      <td style="color:${r.crashAt < 2 ? 'var(--red)' : r.crashAt >= 5 ? 'var(--green)' : 'var(--gold)'};font-family:'Share Tech Mono',monospace">${parseFloat(r.crashAt).toFixed(2)}×</td>
+      <td>${r.manual ? '<span style="color:var(--gold)">YES</span>' : '<span style="color:var(--dim)">no</span>'}</td>
+    </tr>`).join('');
+}
+
+// ─── ALL LOAD ────────────────────────────────────────────────────────────
+function loadAll() { loadDeposits(); loadPlayers(); loadUsers(); loadRounds(); }
+
+// ─── API HELPER ──────────────────────────────────────────────────────────
+async function api(method, url, body) {
+  try {
+    const r = await fetch(url, {
+      method, headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+adminToken },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const d = await r.json();
+    if (!r.ok) { showToast(d.error || 'Error'); return null; }
+    return d;
+  } catch { showToast('Network error'); return null; }
+}
+
+let toastT;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show';
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.className = 'toast', 3000);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = sessionStorage.getItem('admin_token');
+  if (saved) { adminToken = saved; enterAdmin(); }
+});
+</script>
+</body>
+</html>

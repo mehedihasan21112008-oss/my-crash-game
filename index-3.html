@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>CRASH ZONE — Play</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+/* ─── RESET & VARIABLES ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:        #05070f;
+  --bg2:       #080d1a;
+  --panel:     #0a1020;
+  --border:    rgba(0,240,255,0.12);
+  --cyan:      #00f0ff;
+  --pink:      #ff2d78;
+  --gold:      #ffd700;
+  --green:     #00ff88;
+  --red:       #ff1e42;
+  --dim:       #3a5070;
+  --text:      #b0d0f0;
+  --glow-c:    0 0 24px rgba(0,240,255,0.4);
+  --glow-p:    0 0 24px rgba(255,45,120,0.4);
+  --glow-g:    0 0 24px rgba(0,255,136,0.4);
+}
+html, body { height: 100%; overflow-x: hidden; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 16px;
+  min-height: 100vh;
+}
+input, button { font-family: inherit; }
+
+/* ─── BACKGROUND FX ─────────────────────────────────────────────────────── */
+.bg-grid {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0,240,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,240,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+}
+.bg-glow {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 60% 40% at 20% 20%, rgba(0,240,255,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 80% 80%, rgba(255,45,120,0.06) 0%, transparent 60%);
+}
+.scanlines {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
+}
+.vignette {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.6) 100%);
+}
+
+/* ─── LAYOUT ─────────────────────────────────────────────────────────────── */
+#app { position: relative; z-index: 1; min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ─── AUTH SCREEN ────────────────────────────────────────────────────────── */
+#authScreen {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.auth-box {
+  background: linear-gradient(135deg, rgba(10,16,32,0.95), rgba(5,7,15,0.98));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 40px 32px;
+  width: 100%; max-width: 400px;
+  position: relative;
+  overflow: hidden;
+}
+.auth-box::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--cyan), var(--pink), transparent);
+}
+.auth-logo {
+  text-align: center; margin-bottom: 32px;
+}
+.auth-logo h1 {
+  font-family: 'Orbitron', monospace; font-size: 2.4rem; font-weight: 900;
+  color: var(--cyan); text-shadow: var(--glow-c);
+  letter-spacing: 6px;
+}
+.auth-logo p { color: var(--dim); font-size: 0.8rem; letter-spacing: 3px; margin-top: 4px; }
+
+.auth-tabs { display: flex; gap: 0; margin-bottom: 28px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.auth-tab {
+  flex: 1; padding: 10px; border: none; background: transparent;
+  color: var(--dim); font-family: 'Rajdhani', sans-serif; font-size: 0.95rem;
+  font-weight: 600; letter-spacing: 2px; cursor: pointer; transition: all 0.2s;
+}
+.auth-tab.active { background: rgba(0,240,255,0.1); color: var(--cyan); }
+
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 0.75rem; color: var(--dim); letter-spacing: 2px; margin-bottom: 6px; }
+.form-input {
+  width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); padding: 12px 16px;
+  font-family: 'Share Tech Mono', monospace; font-size: 0.95rem;
+  outline: none; transition: border-color 0.2s;
+}
+.form-input:focus { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0,240,255,0.15); }
+.form-input::placeholder { color: var(--dim); }
+
+.btn-primary {
+  width: 100%; padding: 14px; border: none; border-radius: 10px; cursor: pointer;
+  font-family: 'Orbitron', monospace; font-size: 0.9rem; font-weight: 700;
+  letter-spacing: 3px; transition: all 0.2s;
+  background: linear-gradient(135deg, #0088ff, #00f0ff);
+  color: #05070f; box-shadow: 0 4px 24px rgba(0,240,255,0.3);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 32px rgba(0,240,255,0.4); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.auth-error { color: var(--red); font-size: 0.82rem; text-align: center; margin-top: 10px; min-height: 20px; }
+.auth-success { color: var(--green); font-size: 0.82rem; text-align: center; margin-top: 10px; }
+.auth-link { text-align: center; margin-top: 16px; font-size: 0.8rem; color: var(--dim); }
+.auth-link a { color: var(--cyan); cursor: pointer; text-decoration: none; }
+
+/* ─── HEADER ─────────────────────────────────────────────────────────────── */
+#gameScreen { flex: 1; display: flex; flex-direction: column; display: none; }
+.top-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(5,7,15,0.9); border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 50;
+}
+.logo-sm {
+  font-family: 'Orbitron', monospace; font-weight: 900; font-size: 1.1rem;
+  color: var(--cyan); text-shadow: var(--glow-c); letter-spacing: 4px;
+}
+.top-info { display: flex; align-items: center; gap: 12px; }
+.player-count { font-size: 0.72rem; color: var(--dim); letter-spacing: 1px; }
+.player-count span { color: var(--green); }
+.balance-chip {
+  background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+  border-radius: 20px; padding: 5px 14px;
+  font-family: 'Share Tech Mono', monospace; font-size: 0.85rem;
+  color: var(--gold);
+}
+.nav-links { display: flex; gap: 8px; }
+.nav-btn {
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--dim); padding: 5px 12px; font-size: 0.78rem; letter-spacing: 1px;
+  cursor: pointer; transition: all 0.2s;
+}
+.nav-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.nav-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,240,255,0.07); }
+
+/* ─── PAGES ──────────────────────────────────────────────────────────────── */
+.page { display: none; flex: 1; padding: 14px; flex-direction: column; gap: 12px; max-width: 520px; margin: 0 auto; width: 100%; }
+.page.active { display: flex; }
+
+/* ─── GAME VIEW ──────────────────────────────────────────────────────────── */
+.crash-arena {
+  background: radial-gradient(ellipse at 50% 60%, rgba(0,240,255,0.04) 0%, rgba(5,7,15,0.98) 70%);
+  border: 1px solid var(--border); border-radius: 16px;
+  padding: 24px; display: flex; flex-direction: column; align-items: center;
+  gap: 10px; position: relative; overflow: hidden; min-height: 240px;
+  justify-content: center;
+}
+.arena-corners span {
+  position: absolute; width: 14px; height: 14px;
+}
+.arena-corners span:nth-child(1) { top: 10px; left: 10px; border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+.arena-corners span:nth-child(2) { top: 10px; right: 10px; border-top: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+.arena-corners span:nth-child(3) { bottom: 10px; left: 10px; border-bottom: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+.arena-corners span:nth-child(4) { bottom: 10px; right: 10px; border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+
+.arena-ring {
+  position: absolute; border-radius: 50%;
+  border: 1px solid rgba(0,240,255,0.06);
+}
+.arena-ring:nth-child(1) { width: 200px; height: 200px; }
+.arena-ring:nth-child(2) { width: 320px; height: 320px; }
+.arena-ring:nth-child(3) { width: 440px; height: 440px; }
+
+.status-tag {
+  font-size: 0.68rem; letter-spacing: 4px; color: var(--dim);
+  text-transform: uppercase; z-index: 2;
+}
+
+/* rocket + trail */
+.rocket-scene { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; }
+.rocket-emoji {
+  font-size: 3rem; filter: drop-shadow(0 0 12px rgba(0,240,255,0.6));
+  transition: filter 0.3s;
+}
+.rocket-emoji.crashed { filter: drop-shadow(0 0 20px rgba(255,30,66,0.9)); }
+.trail {
+  height: 4px; width: 0; background: linear-gradient(90deg, transparent, var(--cyan));
+  border-radius: 2px; margin-top: -6px;
+  transition: width 0.1s; filter: blur(1px);
+  box-shadow: 0 0 8px var(--cyan);
+}
+
+/* multiplier display */
+.mult-display {
+  font-family: 'Orbitron', monospace; font-size: 4rem; font-weight: 900;
+  color: var(--cyan); text-shadow: 0 0 30px rgba(0,240,255,0.6);
+  line-height: 1; z-index: 2; letter-spacing: -2px;
+  transition: color 0.2s, text-shadow 0.2s;
+}
+.mult-display.hot { color: var(--gold); text-shadow: 0 0 30px rgba(255,215,0,0.6); }
+.mult-display.danger { color: var(--red); text-shadow: 0 0 30px rgba(255,30,66,0.6); }
+.mult-display.crashed-anim { animation: crashPulse 0.5s ease-out; }
+@keyframes crashPulse {
+  0% { transform: scale(1.2); }
+  50% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+.countdown-badge {
+  font-family: 'Share Tech Mono', monospace; font-size: 1rem;
+  color: var(--dim); letter-spacing: 3px; z-index: 2;
+}
+
+/* crash flash overlay */
+.crash-overlay {
+  position: absolute; inset: 0; background: rgba(255,30,66,0.12);
+  pointer-events: none; opacity: 0; z-index: 3; border-radius: 16px;
+  transition: opacity 0.1s;
+}
+.crash-overlay.show { opacity: 1; animation: flashOut 0.5s forwards; }
+@keyframes flashOut { 0%{opacity:1} 100%{opacity:0} }
+
+/* particles */
+.particle {
+  position: absolute; width: 4px; height: 4px; border-radius: 50%;
+  pointer-events: none; z-index: 4;
+  animation: particle-fly 0.8s ease-out forwards;
+}
+@keyframes particle-fly {
+  0% { opacity: 1; transform: translate(0,0) scale(1); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0); }
+}
+
+/* history pills */
+.history-row {
+  display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none;
+  z-index: 2; padding: 2px 0;
+}
+.history-row::-webkit-scrollbar { display: none; }
+.h-pill {
+  flex-shrink: 0; padding: 3px 10px; border-radius: 20px;
+  font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; font-weight: 700;
+  background: rgba(255,30,66,0.12); color: var(--red);
+  border: 1px solid rgba(255,30,66,0.25);
+}
+.h-pill.hi { background: rgba(0,255,136,0.1); color: var(--green); border-color: rgba(0,255,136,0.25); }
+.h-pill.med { background: rgba(255,215,0,0.1); color: var(--gold); border-color: rgba(255,215,0,0.25); }
+
+/* ─── BET PANEL ──────────────────────────────────────────────────────────── */
+.bet-panel {
+  background: rgba(8,13,26,0.95); border: 1px solid var(--border);
+  border-radius: 14px; padding: 18px; display: flex;
+  flex-direction: column; gap: 12px;
+}
+.panel-label { font-size: 0.7rem; color: var(--dim); letter-spacing: 3px; margin-bottom: 4px; }
+
+.bet-input-wrap { display: flex; gap: 8px; }
+.bet-input {
+  flex: 1; background: rgba(0,0,0,0.5); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); padding: 11px 14px;
+  font-family: 'Share Tech Mono', monospace; font-size: 1rem; outline: none;
+  transition: border-color 0.2s;
+}
+.bet-input:focus { border-color: var(--cyan); }
+
+.quick-row { display: flex; gap: 6px; }
+.qb {
+  flex: 1; background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--dim); font-family: 'Rajdhani', sans-serif;
+  font-size: 0.78rem; font-weight: 600; padding: 7px 0; cursor: pointer;
+  transition: all 0.15s;
+}
+.qb:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(0,240,255,0.05); }
+
+.auto-cashout-row { display: flex; align-items: center; gap: 10px; }
+.auto-cashout-row label { font-size: 0.78rem; color: var(--dim); letter-spacing: 1px; white-space: nowrap; }
+.auto-cashout-row input {
+  flex: 1; background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); padding: 7px 10px;
+  font-family: 'Share Tech Mono', monospace; font-size: 0.85rem; outline: none;
+}
+.auto-cashout-row input:focus { border-color: var(--gold); }
+
+/* action button */
+.action-btn {
+  width: 100%; padding: 16px; border: none; border-radius: 10px; cursor: pointer;
+  font-family: 'Orbitron', monospace; font-size: 0.95rem; font-weight: 700;
+  letter-spacing: 2px; transition: all 0.15s;
+}
+.action-btn.bet-state {
+  background: linear-gradient(135deg, #0066cc, #00aaff, #00f0ff);
+  color: #03050a; box-shadow: 0 4px 24px rgba(0,200,255,0.35);
+}
+.action-btn.bet-state:hover { transform: translateY(-1px); box-shadow: 0 6px 32px rgba(0,200,255,0.5); }
+.action-btn.cashout-state {
+  background: linear-gradient(135deg, #cc0033, #ff1e4e, #ff2d78);
+  color: #fff; box-shadow: 0 4px 24px rgba(255,30,66,0.35);
+  animation: pulse-btn 0.6s ease-in-out infinite;
+}
+@keyframes pulse-btn {
+  0%,100%{box-shadow:0 4px 24px rgba(255,30,66,0.35)} 50%{box-shadow:0 4px 32px rgba(255,30,66,0.65)}
+}
+.action-btn:disabled { background: rgba(30,40,60,0.8); color: var(--dim); box-shadow: none; cursor: not-allowed; transform: none; animation: none; }
+
+.profit-line { font-size: 0.82rem; color: var(--green); text-align: center; min-height: 18px; }
+.bet-error   { font-size: 0.78rem; color: var(--red); text-align: center; min-height: 18px; }
+
+/* live bet ticker */
+.live-bets {
+  background: rgba(5,7,15,0.8); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px; max-height: 110px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.live-bets-title { font-size: 0.68rem; color: var(--dim); letter-spacing: 3px; margin-bottom: 8px; }
+.live-bet-row { display: flex; justify-content: space-between; font-size: 0.78rem; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+.live-bet-row .lbr-name { color: var(--text); }
+.live-bet-row .lbr-amt { color: var(--gold); font-family: 'Share Tech Mono', monospace; }
+.live-bet-row .lbr-co { color: var(--green); font-size: 0.7rem; }
+
+/* ─── DEPOSIT PAGE ───────────────────────────────────────────────────────── */
+.card {
+  background: rgba(8,13,26,0.95); border: 1px solid var(--border);
+  border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 14px;
+}
+.card-title {
+  font-family: 'Orbitron', monospace; font-size: 0.85rem; color: var(--cyan);
+  letter-spacing: 3px; border-bottom: 1px solid var(--border); padding-bottom: 10px;
+}
+.method-select { display: flex; gap: 8px; }
+.method-btn {
+  flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: transparent; color: var(--dim); font-family: 'Rajdhani', sans-serif;
+  font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  letter-spacing: 1px;
+}
+.method-btn.selected {
+  border-color: var(--pink); color: var(--pink); background: rgba(255,45,120,0.08);
+  box-shadow: 0 0 12px rgba(255,45,120,0.2);
+}
+.method-info {
+  background: rgba(0,0,0,0.3); border-radius: 8px; padding: 12px;
+  font-size: 0.8rem; color: var(--dim); line-height: 1.7;
+}
+.method-info strong { color: var(--text); }
+
+.tx-history { max-height: 200px; overflow-y: auto; scrollbar-width: thin; }
+.tx-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 0.78rem;
+}
+.tx-status { padding: 2px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 600; }
+.tx-status.pending  { background: rgba(255,215,0,0.15); color: var(--gold); }
+.tx-status.approved { background: rgba(0,255,136,0.15); color: var(--green); }
+.tx-status.rejected { background: rgba(255,30,66,0.15);  color: var(--red); }
+
+/* ─── TOAST ──────────────────────────────────────────────────────────────── */
+#toast {
+  position: fixed; top: 70px; left: 50%; transform: translateX(-50%) translateY(-20px);
+  background: rgba(8,13,26,0.97); border-radius: 8px; padding: 10px 22px;
+  font-size: 0.85rem; letter-spacing: 1px; opacity: 0; pointer-events: none;
+  transition: all 0.3s; z-index: 200; white-space: nowrap;
+  border: 1px solid var(--cyan); color: var(--cyan);
+  box-shadow: 0 0 20px rgba(0,240,255,0.2);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.err  { border-color: var(--red); color: var(--red); box-shadow: 0 0 20px rgba(255,30,66,0.2); }
+#toast.win  { border-color: var(--green); color: var(--green); box-shadow: 0 0 20px rgba(0,255,136,0.2); }
+
+/* misc */
+.section-title {
+  font-family: 'Orbitron', monospace; font-size: 0.75rem; letter-spacing: 3px;
+  color: var(--cyan); margin-bottom: 12px; text-align: center;
+}
+.divider { height: 1px; background: var(--border); margin: 4px 0; }
+.admin-hint { text-align: center; margin-top: 16px; font-size: 0.72rem; }
+.admin-hint a { color: var(--dim); text-decoration: none; letter-spacing: 2px; }
+.admin-hint a:hover { color: var(--cyan); }
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+<div id="toast"></div>
+
+<div id="app">
+
+<!-- ─── AUTH SCREEN ──────────────────────────────────────────────────── -->
+<div id="authScreen">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <h1>CRASH</h1>
+      <p>ZONE · DEMO PLATFORM</p>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchTab('login')">LOGIN</button>
+      <button class="auth-tab" onclick="switchTab('register')">REGISTER</button>
+    </div>
+
+    <!-- Login -->
+    <div id="loginForm">
+      <div class="form-group">
+        <label class="form-label">USERNAME</label>
+        <input class="form-input" id="loginUser" type="text" placeholder="your_username" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">PASSWORD</label>
+        <input class="form-input" id="loginPass" type="password" placeholder="••••••••" />
+      </div>
+      <button class="btn-primary" onclick="doLogin()" id="loginBtn">LOGIN</button>
+      <div class="auth-error" id="loginErr"></div>
+    </div>
+
+    <!-- Register -->
+    <div id="registerForm" style="display:none">
+      <div class="form-group">
+        <label class="form-label">USERNAME</label>
+        <input class="form-input" id="regUser" type="text" placeholder="choose_username" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">PASSWORD</label>
+        <input class="form-input" id="regPass" type="password" placeholder="••••••••" />
+      </div>
+      <button class="btn-primary" onclick="doRegister()" id="regBtn">CREATE ACCOUNT</button>
+      <div class="auth-error" id="regErr"></div>
+      <div class="auth-success" id="regOk"></div>
+    </div>
+
+    <div class="admin-hint"><a href="admin.html">⚙ Admin Access</a></div>
+  </div>
+</div>
+
+<!-- ─── GAME SCREEN ──────────────────────────────────────────────────── -->
+<div id="gameScreen">
+  <!-- top bar -->
+  <div class="top-bar">
+    <div class="logo-sm">CRASH</div>
+    <div class="top-info">
+      <div class="player-count">🟢 <span id="playerCount">0</span> online</div>
+      <div class="balance-chip">$<span id="balDisplay">0.00</span></div>
+    </div>
+    <div class="nav-links">
+      <button class="nav-btn active" id="navGame" onclick="showPage('game')">GAME</button>
+      <button class="nav-btn" id="navDeposit" onclick="showPage('deposit')">DEPOSIT</button>
+      <button class="nav-btn" onclick="doLogout()">EXIT</button>
+    </div>
+  </div>
+
+  <!-- GAME PAGE -->
+  <div class="page active" id="pageGame">
+
+    <!-- arena -->
+    <div class="crash-arena" id="arena">
+      <div class="arena-corners"><span></span><span></span><span></span><span></span></div>
+      <div class="arena-ring"></div><div class="arena-ring"></div><div class="arena-ring"></div>
+      <div class="crash-overlay" id="crashOverlay"></div>
+
+      <div class="status-tag" id="statusTag">WAITING FOR ROUND</div>
+
+      <div class="rocket-scene">
+        <div class="rocket-emoji" id="rocketEmoji">🚀</div>
+        <div class="trail" id="trail"></div>
+      </div>
+
+      <div class="mult-display" id="multDisplay">—</div>
+      <div class="countdown-badge" id="cdBadge"></div>
+      <div class="history-row" id="historyRow"></div>
+    </div>
+
+    <!-- bet panel -->
+    <div class="bet-panel">
+      <div>
+        <div class="panel-label">BET AMOUNT ($)</div>
+        <div class="bet-input-wrap">
+          <input class="bet-input" id="betAmt" type="number" value="10" min="1" />
+        </div>
+      </div>
+      <div class="quick-row">
+        <button class="qb" onclick="adjBet(0.5)">½</button>
+        <button class="qb" onclick="adjBet(2)">2×</button>
+        <button class="qb" onclick="setBet(10)">$10</button>
+        <button class="qb" onclick="setBet(50)">$50</button>
+        <button class="qb" onclick="setBet(100)">$100</button>
+        <button class="qb" onclick="setBet(500)">$500</button>
+      </div>
+      <div class="auto-cashout-row">
+        <label>AUTO CASHOUT @</label>
+        <input type="number" id="autoCashoutVal" placeholder="e.g. 2.00" step="0.01" min="1.01" />
+        <span style="font-size:0.72rem;color:var(--dim)">×</span>
+      </div>
+      <button class="action-btn bet-state" id="actionBtn" onclick="handleAction()">PLACE BET</button>
+      <div class="profit-line" id="profitLine"></div>
+      <div class="bet-error" id="betErr"></div>
+    </div>
+
+    <!-- live bets -->
+    <div class="live-bets">
+      <div class="live-bets-title">LIVE BETS</div>
+      <div id="liveBetsList"><div style="color:var(--dim);font-size:0.75rem">No active bets yet</div></div>
+    </div>
+
+  </div><!-- /pageGame -->
+
+  <!-- DEPOSIT PAGE -->
+  <div class="page" id="pageDeposit">
+    <div class="section-title">DEPOSIT FUNDS</div>
+
+    <div class="card">
+      <div class="card-title">SELECT METHOD</div>
+      <div class="method-select">
+        <button class="method-btn selected" id="btnBkash" onclick="selectMethod('bkash')">📱 BKASH</button>
+        <button class="method-btn" id="btnNagad" onclick="selectMethod('nagad')">💳 NAGAD</button>
+      </div>
+      <div class="method-info" id="methodInfo">
+        <strong>Bkash Personal:</strong> 01XXXXXXXXX<br>
+        Send money to this number, then submit your Transaction ID below.
+        Deposits are manually reviewed and approved within minutes.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">SUBMIT TRANSACTION</div>
+      <div class="form-group">
+        <div class="form-label">AMOUNT (BDT)</div>
+        <input class="form-input" id="depAmt" type="number" placeholder="Minimum 10 BDT" min="10" />
+      </div>
+      <div class="form-group">
+        <div class="form-label">TRANSACTION ID</div>
+        <input class="form-input" id="depTxId" type="text" placeholder="e.g. 8N8A5X9KL2" />
+      </div>
+      <button class="btn-primary" onclick="submitDeposit()">SUBMIT FOR APPROVAL</button>
+      <div class="auth-error" id="depErr"></div>
+      <div class="auth-success" id="depOk"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">MY TRANSACTIONS</div>
+      <div class="tx-history" id="txHistory">
+        <div style="color:var(--dim);font-size:0.78rem;text-align:center;padding:10px">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /gameScreen -->
+
+</div><!-- /app -->
+
+<script>
+// ─── GLOBALS ────────────────────────────────────────────────────────────────
+let socket, token, username, balance = 0;
+let phase = 'idle', hasBet = false, cashedOut = false;
+let currentMult = 1.00;
+let selectedMethod = 'bkash';
+let liveBets = {};
+
+// ─── SOCKET ─────────────────────────────────────────────────────────────────
+function connectSocket() {
+  socket = io();
+
+  socket.on('state', d => {
+    phase = d.phase;
+    if (d.history) renderHistory(d.history);
+    if (d.phase === 'running') {
+      setPhaseRunning();
+      currentMult = d.multiplier;
+      updateMult(d.multiplier);
+    } else if (d.phase === 'countdown') {
+      setPhaseCountdown(d.countdown || 5);
+    } else if (d.phase === 'crashed') {
+      setPhaseCrashed(d.multiplier);
+    }
+  });
+
+  socket.on('phase', d => {
+    phase = d.phase;
+    if (d.phase === 'countdown') setPhaseCountdown(5);
+    if (d.phase === 'running')   { setPhaseRunning(); liveBets = {}; renderLiveBets(); }
+    if (d.phase === 'crashed')   setPhaseCrashed();
+  });
+
+  socket.on('countdown', d => {
+    document.getElementById('cdBadge').textContent = `NEXT ROUND IN ${d.sec}s`;
+  });
+
+  socket.on('tick', d => {
+    currentMult = d.multiplier;
+    updateMult(d.multiplier);
+    updateTrail(d.multiplier);
+    if (hasBet && !cashedOut) {
+      const payout = (parseFloat(document.getElementById('betAmt').value || 10) * d.multiplier).toFixed(2);
+      const btn = document.getElementById('actionBtn');
+      btn.textContent = `CASH OUT  $${payout}`;
+    }
+  });
+
+  socket.on('crashed', d => {
+    phase = 'crashed';
+    setPhaseCrashed(d.multiplier);
+    hasBet = false; cashedOut = false;
+    liveBets = {}; renderLiveBets();
+  });
+
+  socket.on('betPlaced', d => {
+    hasBet = true; cashedOut = false;
+    setBalance(d.newBalance);
+    setActionCashout();
+    showToast('Bet placed!');
+    document.getElementById('profitLine').textContent = '';
+    document.getElementById('betErr').textContent = '';
+  });
+
+  socket.on('betError', d => {
+    document.getElementById('betErr').textContent = d.error;
+    setTimeout(() => document.getElementById('betErr').textContent = '', 3000);
+  });
+
+  socket.on('cashedOut', d => {
+    cashedOut = true;
+    hasBet = false;
+    setBalance(d.newBalance);
+    const profit = (d.payout - parseFloat(document.getElementById('betAmt').value || 10)).toFixed(2);
+    document.getElementById('profitLine').textContent = `✅ +$${profit} at ${d.multiplier.toFixed(2)}×`;
+    document.getElementById('actionBtn').textContent = 'CASHED OUT ✓';
+    document.getElementById('actionBtn').disabled = true;
+    showToast(`Cashed out $${d.payout.toFixed(2)} at ${d.multiplier.toFixed(2)}×`, 'win');
+  });
+
+  socket.on('betLost', d => {
+    showToast(`Crashed! Lost $${d.amount.toFixed(2)}`, 'err');
+  });
+
+  socket.on('history', renderHistory);
+  socket.on('playerCount', n => document.getElementById('playerCount').textContent = n);
+  socket.on('activeBets', n => {});
+
+  socket.on('depositApproved', d => {
+    setBalance(d.newBalance);
+    showToast(`Deposit approved! +$${d.amount}`, 'win');
+  });
+
+  socket.on('admin:manualSet', d => {
+    showToast(`Admin set crash to ${d.crashAt}×`, 'err');
+  });
+}
+
+// ─── PHASE UI ────────────────────────────────────────────────────────────────
+function setPhaseCountdown(sec) {
+  document.getElementById('statusTag').textContent = 'PLACING BETS';
+  document.getElementById('cdBadge').textContent = `NEXT ROUND IN ${sec}s`;
+  document.getElementById('rocketEmoji').textContent = '🚀';
+  document.getElementById('rocketEmoji').className = 'rocket-emoji';
+  document.getElementById('multDisplay').textContent = '—';
+  document.getElementById('multDisplay').className = 'mult-display';
+  document.getElementById('trail').style.width = '0';
+  document.getElementById('profitLine').textContent = '';
+  setActionBet();
+}
+
+function setPhaseRunning() {
+  document.getElementById('statusTag').textContent = 'FLYING ↑';
+  document.getElementById('cdBadge').textContent = '';
+  document.getElementById('rocketEmoji').textContent = '🚀';
+  document.getElementById('rocketEmoji').className = 'rocket-emoji';
+  currentMult = 1.00;
+  updateMult(1.00);
+  if (!hasBet) {
+    document.getElementById('actionBtn').textContent = 'IN FLIGHT…';
+    document.getElementById('actionBtn').disabled = true;
+    document.getElementById('actionBtn').className = 'action-btn';
+  }
+}
+
+function setPhaseCrashed(mult) {
+  const m = mult || currentMult;
+  document.getElementById('statusTag').textContent = '💥 CRASHED';
+  document.getElementById('cdBadge').textContent = '';
+  document.getElementById('rocketEmoji').textContent = '💥';
+  document.getElementById('rocketEmoji').className = 'rocket-emoji crashed';
+  document.getElementById('multDisplay').className = 'mult-display danger crashed-anim';
+  document.getElementById('multDisplay').textContent = (m).toFixed(2) + '×';
+  document.getElementById('trail').style.width = '0';
+  const ov = document.getElementById('crashOverlay');
+  ov.className = 'crash-overlay show';
+  setTimeout(() => ov.className = 'crash-overlay', 600);
+  spawnParticles();
+  if (!cashedOut) setActionBet();
+}
+
+function setActionBet() {
+  const btn = document.getElementById('actionBtn');
+  btn.textContent = hasBet ? 'BET PLACED ✓' : 'PLACE BET';
+  btn.className = 'action-btn bet-state';
+  btn.disabled = hasBet || phase === 'running' || phase === 'crashed';
+}
+
+function setActionCashout() {
+  const btn = document.getElementById('actionBtn');
+  btn.textContent = 'CASH OUT';
+  btn.className = 'action-btn cashout-state';
+  btn.disabled = false;
+}
+
+// ─── MULTIPLIER ──────────────────────────────────────────────────────────────
+function updateMult(m) {
+  const el = document.getElementById('multDisplay');
+  el.textContent = m.toFixed(2) + '×';
+  if (m < 2)       el.className = 'mult-display';
+  else if (m < 5)  el.className = 'mult-display hot';
+  else             el.className = 'mult-display danger';
+}
+
+function updateTrail(m) {
+  const width = Math.min(160, (m - 1) * 30);
+  document.getElementById('trail').style.width = width + 'px';
+}
+
+// ─── PARTICLES ───────────────────────────────────────────────────────────────
+function spawnParticles() {
+  const arena = document.getElementById('arena');
+  for (let i = 0; i < 14; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const angle = (Math.PI * 2 * i) / 14;
+    const dist  = 40 + Math.random() * 60;
+    p.style.cssText = `
+      left:50%; top:50%;
+      background:${['#ff1e42','#ff2d78','#ffd700','#ff6600'][i % 4]};
+      --dx:${Math.cos(angle)*dist}px; --dy:${Math.sin(angle)*dist}px;
+    `;
+    arena.appendChild(p);
+    setTimeout(() => p.remove(), 900);
+  }
+}
+
+// ─── HISTORY ─────────────────────────────────────────────────────────────────
+function renderHistory(arr) {
+  const row = document.getElementById('historyRow');
+  row.innerHTML = arr.map(r => {
+    const v = r.crashAt || r;
+    const cls = v >= 5 ? 'hi' : v >= 2 ? 'med' : '';
+    return `<div class="h-pill ${cls}">${parseFloat(v).toFixed(2)}×</div>`;
+  }).join('');
+}
+
+// ─── LIVE BETS ───────────────────────────────────────────────────────────────
+function renderLiveBets() {
+  const el = document.getElementById('liveBetsList');
+  const entries = Object.values(liveBets);
+  if (!entries.length) { el.innerHTML = '<div style="color:var(--dim);font-size:0.75rem">No active bets yet</div>'; return; }
+  el.innerHTML = entries.map(b => `
+    <div class="live-bet-row">
+      <span class="lbr-name">${b.username}</span>
+      <span class="lbr-amt">$${b.amount.toFixed(2)}</span>
+      ${b.cashedOut ? `<span class="lbr-co">✅ ${b.cashoutAt}×</span>` : ''}
+    </div>`).join('');
+}
+
+// ─── ACTIONS ─────────────────────────────────────────────────────────────────
+function handleAction() {
+  if (hasBet && !cashedOut && phase === 'running') {
+    socket.emit('cashout');
+  } else if (phase === 'countdown' && !hasBet) {
+    const amt = parseFloat(document.getElementById('betAmt').value);
+    const ac  = parseFloat(document.getElementById('autoCashoutVal').value) || null;
+    if (isNaN(amt) || amt <= 0) { document.getElementById('betErr').textContent = 'Enter valid amount'; return; }
+    socket.emit('placeBet', { amount: amt, autoCashout: ac });
+  }
+}
+
+function adjBet(f) {
+  const cur = parseFloat(document.getElementById('betAmt').value) || 10;
+  document.getElementById('betAmt').value = Math.max(1, cur * f).toFixed(2);
+}
+function setBet(v) { document.getElementById('betAmt').value = v; }
+
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('loginForm').style.display    = tab === 'login'    ? '' : 'none';
+  document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
+  document.querySelectorAll('.auth-tab').forEach((t, i) => t.classList.toggle('active', (i===0) === (tab==='login')));
+}
+
+async function doLogin() {
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  document.getElementById('loginErr').textContent = '';
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = 'LOGGING IN…';
+  try {
+    const r = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:u, password:p}) });
+    const d = await r.json();
+    if (!r.ok) { document.getElementById('loginErr').textContent = d.error; return; }
+    token = d.token; username = d.username; balance = d.balance;
+    localStorage.setItem('crash_token', token);
+    enterGame();
+  } catch { document.getElementById('loginErr').textContent = 'Connection error'; }
+  finally { btn.disabled = false; btn.textContent = 'LOGIN'; }
+}
+
+async function doRegister() {
+  const u = document.getElementById('regUser').value.trim();
+  const p = document.getElementById('regPass').value;
+  document.getElementById('regErr').textContent = '';
+  document.getElementById('regOk').textContent  = '';
+  const btn = document.getElementById('regBtn');
+  btn.disabled = true; btn.textContent = 'CREATING…';
+  try {
+    const r = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:u, password:p}) });
+    const d = await r.json();
+    if (!r.ok) { document.getElementById('regErr').textContent = d.error; return; }
+    document.getElementById('regOk').textContent = d.message;
+    setTimeout(() => switchTab('login'), 1500);
+  } catch { document.getElementById('regErr').textContent = 'Connection error'; }
+  finally { btn.disabled = false; btn.textContent = 'CREATE ACCOUNT'; }
+}
+
+function enterGame() {
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('gameScreen').style.display = 'flex';
+  setBalance(balance);
+  connectSocket();
+  setTimeout(() => socket.emit('auth', { token }), 300);
+}
+
+function doLogout() {
+  localStorage.removeItem('crash_token');
+  location.reload();
+}
+
+// ─── DEPOSIT ─────────────────────────────────────────────────────────────────
+function selectMethod(m) {
+  selectedMethod = m;
+  document.getElementById('btnBkash').className = 'method-btn' + (m === 'bkash' ? ' selected' : '');
+  document.getElementById('btnNagad').className = 'method-btn' + (m === 'nagad' ? ' selected' : '');
+  document.getElementById('methodInfo').innerHTML = m === 'bkash'
+    ? '<strong>Bkash Personal:</strong> 01XXXXXXXXX<br>Send money, then paste your TrxID below.'
+    : '<strong>Nagad Personal:</strong> 01XXXXXXXXX<br>Send money, then paste your TrxID below.';
+}
+
+async function submitDeposit() {
+  const amt  = document.getElementById('depAmt').value;
+  const txId = document.getElementById('depTxId').value.trim();
+  document.getElementById('depErr').textContent = '';
+  document.getElementById('depOk').textContent  = '';
+  if (!amt || !txId) { document.getElementById('depErr').textContent = 'All fields required'; return; }
+  try {
+    const r = await fetch('/api/deposit', {
+      method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body: JSON.stringify({ method: selectedMethod, txId, amount: parseFloat(amt) })
+    });
+    const d = await r.json();
+    if (!r.ok) { document.getElementById('depErr').textContent = d.error; return; }
+    document.getElementById('depOk').textContent = d.message;
+    loadMyTx();
+  } catch { document.getElementById('depErr').textContent = 'Error submitting'; }
+}
+
+async function loadMyTx() {
+  try {
+    const r = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
+    const d = await r.json();
+    setBalance(d.user.balance);
+    const txs = d.transactions.filter(t => t.type === 'deposit');
+    const el  = document.getElementById('txHistory');
+    if (!txs.length) { el.innerHTML = '<div style="color:var(--dim);font-size:0.78rem;text-align:center;padding:10px">No transactions yet</div>'; return; }
+    el.innerHTML = txs.map(t => `
+      <div class="tx-row">
+        <div>
+          <div style="color:var(--text);font-size:0.8rem">${t.method?.toUpperCase()} · ${t.txId || '—'}</div>
+          <div style="color:var(--dim);font-size:0.7rem">${new Date(t.createdAt).toLocaleString()}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="color:var(--gold);font-family:'Share Tech Mono',monospace">$${t.amount}</div>
+          <div class="tx-status ${t.status}">${t.status.toUpperCase()}</div>
+        </div>
+      </div>`).join('');
+  } catch {}
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function setBalance(b) {
+  balance = b;
+  document.getElementById('balDisplay').textContent = parseFloat(b).toFixed(2);
+}
+
+function showPage(p) {
+  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('page' + p.charAt(0).toUpperCase() + p.slice(1)).classList.add('active');
+  document.getElementById('nav' + p.charAt(0).toUpperCase() + p.slice(1)).classList.add('active');
+  if (p === 'deposit') loadMyTx();
+}
+
+let toastTimer;
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = 'toast', 2800);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('crash_token');
+  if (saved) {
+    token = saved;
+    // try auto-login by fetching user
+    fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d && d.user) {
+          username = d.user.username; balance = d.user.balance;
+          enterGame();
+        } else {
+          localStorage.removeItem('crash_token');
+        }
+      }).catch(() => {});
+  }
+});
+</script>
+</body>
+</html>
